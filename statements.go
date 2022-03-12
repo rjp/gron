@@ -396,6 +396,203 @@ func (ss statements) Contains(search statement) bool {
 	return false
 }
 
+const inObject = 1
+const inArray = 2
+
+type outputfunc func(w io.Writer, s statement, conv statementconv)
+
+func lowMemWriter(w io.Writer, s statement, conv statementconv) {
+	fmt.Fprintln(w, conv(s))
+}
+
+func lowMemWriteJSON(w io.Writer, s statement, conv statementconv) {
+	t, err := s.jsonify()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Fprintln(w, conv(t))
+}
+
+func recursiveStatementsFromJSON(r io.Reader, prefix statement, w io.Writer, opts int, conv statementconv) error {
+	output := lowMemWriter
+
+	if opts&optJSON == optJSON {
+		output = lowMemWriteJSON
+	}
+
+	d := json.NewDecoder(r)
+
+	// We don't necessarily need `UseNumber` - which gives us `json.Number` instead
+	// of `float64` when parsing a JSON number - but it avoids a bunch of conversions
+	// and assumptions when outputting the numbers later.
+	d.UseNumber()
+
+	objIndex := 0
+	arrIndex := 0
+	state := 0
+
+	if opts&optStream == optStream {
+		state = inArray
+		output(w, statement{token{"json", typBare}, token{"=", typEquals}, token{"[]", typEmptyArray}, token{";", typSemi}}, conv)
+	}
+
+	return doParsing(prefix, d, state, 0, &objIndex, &arrIndex, w, opts, 0, conv, output)
+}
+
+func doParsing(prefix statement, d *json.Decoder, state int, depth int, objIndex *int, arrIndex *int, w io.Writer, opts int, processed int, conv statementconv, output outputfunc) error {
+	prevKey := ""
+	workingPrefix := prefix
+
+	for {
+		// Do we want to return only the first object if we're not
+		// explicitly requesting stream mode?
+		/*
+			if depth == 0 && processed > 0 && opts&optStream == 0 {
+				return nil
+			}
+		*/
+
+		// Get a token, break if there's a not-EOF error.
+		t, err := d.Token()
+		if err != nil && err != io.EOF {
+			return err
+		}
+
+		// We need to know if we've processed any tokens.
+		processed++
+
+		// If we're in an array, update the local prefix to include
+		// the index number, e.g., `json.moose[23]`.
+		if state == inArray {
+			workingPrefix = append(prefix, token{"[", typLBrace}, token{fmt.Sprintf("%d", *arrIndex), typNumericKey}, token{"]", typRBrace})
+		}
+
+		switch x := t.(type) {
+		case json.Delim:
+			s := x.String()
+
+			switch s {
+			case "{":
+				myObjIndex := 0
+				if state == inArray {
+					*arrIndex++
+				}
+				if state == inObject {
+					*objIndex++
+				}
+
+				np := newPrefix(workingPrefix, prevKey)
+
+				q := append(np, token{"=", typEquals}, token{"{}", typEmptyObject}, token{";", typSemi})
+				output(w, q, conv)
+
+				doParsing(np, d, inObject, depth+1, &myObjIndex, arrIndex, w, opts, processed, conv, output)
+				continue
+
+			// Ending an object bumps us up the stack one level.
+			case "}":
+				return nil
+
+			case "[":
+				myArrIndex := 0
+				if state == inObject {
+					*objIndex++
+				}
+				if state == inArray {
+					*arrIndex++
+				}
+				np := newPrefix(workingPrefix, prevKey)
+				q := append(np, token{"=", typEquals}, token{"[]", typEmptyArray}, token{";", typSemi})
+
+				output(w, q, conv)
+
+				// We keep the same prefix here
+				doParsing(np, d, inArray, depth+1, objIndex, &myArrIndex, w, opts, processed, conv, output)
+				continue
+
+			// Ending an array bumps us up the stack one level.
+			case "]":
+				return nil
+			}
+
+		// Not a delimiter, it's a number or a string.
+		default:
+			if state == inArray {
+				var q statement
+
+				switch x.(type) {
+
+				// Only 5 options here - https://pkg.go.dev/encoding/json#Token
+				// Prime candidate for refactoring
+				case bool:
+					q = addBool(workingPrefix, x.(bool))
+
+				case float64:
+					q = addFloat64(workingPrefix, x.(float64))
+
+				case json.Number:
+					q = addNumber(workingPrefix, x.(json.Number))
+
+				case string:
+					q = addString(workingPrefix, x.(string))
+
+				case nil:
+					q = addNil(workingPrefix)
+
+				default:
+					// Should we error here?
+
+				}
+				output(w, q, conv)
+				*arrIndex++
+			}
+			if state == inObject {
+				// Because the tokenizer doesn't give us any
+				// information about whether a string is a key or
+				// not, we have to infer that from whether we're
+				// A or B in the items we've seen at this level.
+				if *objIndex%2 == 1 {
+					np := newPrefix(workingPrefix, prevKey)
+					var q statement
+					switch x.(type) {
+
+					// Only 5 options here - https://pkg.go.dev/encoding/json#Token
+					// Prime candidate for refactoring
+					case bool:
+						q = addBool(np, x.(bool))
+
+					case float64:
+						q = addFloat64(np, x.(float64))
+
+					case json.Number:
+						q = addNumber(np, x.(json.Number))
+
+					case string:
+						q = addString(np, x.(string))
+
+					case nil:
+						q = addNil(np)
+
+					default:
+						// Should we error here?
+					}
+					output(w, q, conv)
+
+				} else {
+					prevKey = x.(string)
+				}
+				*objIndex++
+			}
+		}
+
+		if err == io.EOF {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("Unknown error")
+}
+
 // statementsFromJSON takes an io.Reader containing JSON
 // and returns statements or an error on failure
 func statementsFromJSON(r io.Reader, prefix statement) (statements, error) {
