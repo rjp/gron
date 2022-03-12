@@ -95,6 +95,7 @@ func main() {
 		versionFlag    bool
 		insecureFlag   bool
 		jsonFlag       bool
+		memoryFlag     bool
 	)
 
 	flag.BoolVar(&ungronFlag, "ungron", false, "")
@@ -111,6 +112,8 @@ func main() {
 	flag.BoolVar(&insecureFlag, "insecure", false, "")
 	flag.BoolVar(&jsonFlag, "j", false, "")
 	flag.BoolVar(&jsonFlag, "json", false, "")
+	flag.BoolVar(&memoryFlag, "e", false, "")
+	flag.BoolVar(&memoryFlag, "efficient", false, "")
 
 	flag.Parse()
 
@@ -165,6 +168,8 @@ func main() {
 	var a actionFn = gron
 	if ungronFlag {
 		a = ungron
+	} else if memoryFlag {
+		a = gronLowMem
 	} else if streamFlag {
 		a = gronStream
 	}
