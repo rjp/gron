@@ -33,6 +33,7 @@ const (
 	optMonochrome = 1 << iota
 	optNoSort
 	optJSON
+	optStream
 )
 
 // Output colors
@@ -163,6 +164,10 @@ func main() {
 	if jsonFlag {
 		opts = opts | optJSON
 	}
+	if streamFlag {
+		opts = opts | optStream
+	}
+
 	var conv statementconv
 	if opts&optMonochrome > 0 {
 		conv = statementToString
