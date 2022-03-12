@@ -413,3 +413,15 @@ func fatal(code int, err error) {
 	fmt.Fprintf(os.Stderr, "%s\n", err)
 	os.Exit(code)
 }
+
+// gronLowMem is the low-memory usage action. Given JSON as the input it
+// returns a list of assignment statements. Possible options are optMonochrome.
+func gronLowMem(r io.Reader, w io.Writer, opts int, conv statementconv) (int, error) {
+	err := recursiveStatementsFromJSON(r, statement{{"json", typBare}}, w, opts, conv)
+
+	if err != nil {
+		return exitFormStatements, fmt.Errorf("failed to form statements: %s", err)
+	}
+
+	return exitOK, nil
+}
