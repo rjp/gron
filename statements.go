@@ -31,6 +31,15 @@ func (s statement) String() string {
 	return strings.Join(out, "")
 }
 
+func (s statement) StringNL() string {
+	out := make([]string, 0, len(s)+2)
+	for _, t := range s {
+		out = append(out, t.format())
+	}
+	out = append(out, "\n")
+	return strings.Join(out, "")
+}
+
 // colorString returns the string form of a statement with ASCII color codes
 func (s statement) colorString() string {
 	out := make([]string, 0, len(s)+2)
@@ -46,6 +55,10 @@ type statementconv func(s statement) string
 // statementconv variant of statement.String
 func statementToString(s statement) string {
 	return s.String()
+}
+
+func statementToStringNL(s statement) string {
+	return s.StringNL()
 }
 
 // statementconv variant of statement.colorString
