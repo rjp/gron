@@ -163,6 +163,12 @@ func main() {
 	if jsonFlag {
 		opts = opts | optJSON
 	}
+	var conv statementconv
+	if opts&optMonochrome > 0 {
+		conv = statementToString
+	} else {
+		conv = statementToColorString
+	}
 
 	// Pick the appropriate action: gron, ungron or gronStream
 	var a actionFn = gron
@@ -173,7 +179,8 @@ func main() {
 	} else if streamFlag {
 		a = gronStream
 	}
-	exitCode, err := a(rawInput, colorable.NewColorableStdout(), opts)
+
+	exitCode, err := a(rawInput, colorable.NewColorableStdout(), opts, conv)
 
 	if exitCode != exitOK {
 		fatal(exitCode, err)
@@ -183,21 +190,14 @@ func main() {
 }
 
 // an actionFn represents a main action of the program, it accepts
-// an input, output and a bitfield of options; returning an exit
-// code and any error that occurred
-type actionFn func(io.Reader, io.Writer, int) (int, error)
+// an input, output, a bitfield of options, and a statement convertor;
+// returning an exit code and any error that occurred
+type actionFn func(io.Reader, io.Writer, int, statementconv) (int, error)
 
 // gron is the default action. Given JSON as the input it returns a list
 // of assignment statements. Possible options are optNoSort and optMonochrome
-func gron(r io.Reader, w io.Writer, opts int) (int, error) {
+func gron(r io.Reader, w io.Writer, opts int, conv statementconv) (int, error) {
 	var err error
-
-	var conv statementconv
-	if opts&optMonochrome > 0 {
-		conv = statementToString
-	} else {
-		conv = statementToColorString
-	}
 
 	ss, err := statementsFromJSON(r, statement{{"json", typBare}})
 	if err != nil {
@@ -230,19 +230,12 @@ out:
 // gronStream is like the gron action, but it treats the input as one
 // JSON object per line. There's a bit of code duplication from the
 // gron action, but it'd be fairly messy to combine the two actions
-func gronStream(r io.Reader, w io.Writer, opts int) (int, error) {
+func gronStream(r io.Reader, w io.Writer, opts int, conv statementconv) (int, error) {
 	var err error
 	errstr := "failed to form statements"
 	var i int
 	var sc *bufio.Scanner
 	var buf []byte
-
-	var conv func(s statement) string
-	if opts&optMonochrome > 0 {
-		conv = statementToString
-	} else {
-		conv = statementToColorString
-	}
 
 	// Helper function to make the prefix statements for each line
 	makePrefix := func(index int) statement {
@@ -319,7 +312,7 @@ out:
 
 // ungron is the reverse of gron. Given assignment statements as input,
 // it returns JSON. The only option is optMonochrome
-func ungron(r io.Reader, w io.Writer, opts int) (int, error) {
+func ungron(r io.Reader, w io.Writer, opts int, conv statementconv) (int, error) {
 	scanner := bufio.NewScanner(r)
 	var maker statementmaker
 
