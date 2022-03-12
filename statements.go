@@ -426,3 +426,41 @@ func (ss *statements) fill(prefix statement, v interface{}) {
 	}
 
 }
+
+// newPrefix returns a `prefix` with an appended item,
+// quoted or bare accordingly.  Abstracted out to keep
+// things more streamlined in the main `doParsing` loop.
+func newPrefix(prefix statement, next string) statement {
+	np := prefix
+	if next != "" {
+		if validIdentifier(next) {
+			np = prefix.withBare(next)
+		} else {
+			np = prefix.withQuotedKey(next)
+		}
+	}
+	return np
+}
+
+func addNil(ss statement) statement {
+	return append(ss, token{"=", typEquals}, token{"null", typNull}, token{";", typSemi})
+}
+
+func addString(ss statement, s string) statement {
+	return append(ss, token{"=", typEquals}, token{quoteString(s), typString}, token{";", typSemi})
+}
+
+func addBool(ss statement, b bool) statement {
+	if b {
+		return append(ss, token{"=", typEquals}, token{"true", typTrue}, token{";", typSemi})
+	}
+	return append(ss, token{"=", typEquals}, token{"false", typFalse}, token{";", typSemi})
+}
+
+func addFloat64(ss statement, x float64) statement {
+	return append(ss, token{"=", typEquals}, token{fmt.Sprintf("%g", x), typNumber}, token{";", typSemi})
+}
+
+func addNumber(ss statement, x json.Number) statement {
+	return append(ss, token{"=", typEquals}, token{x.String(), typNumber}, token{";", typSemi})
+}
