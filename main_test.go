@@ -6,6 +6,8 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"sort"
+	"strings"
 	"testing"
 )
 
@@ -32,7 +34,7 @@ func TestGron(t *testing.T) {
 		}
 
 		out := &bytes.Buffer{}
-		code, err := gron(in, out, optMonochrome)
+		code, err := gron(in, out, optMonochrome, statementToString)
 
 		if code != exitOK {
 			t.Errorf("want exitOK; have %d", code)
@@ -71,7 +73,7 @@ func TestGronStream(t *testing.T) {
 		}
 
 		out := &bytes.Buffer{}
-		code, err := gronStream(in, out, optMonochrome)
+		code, err := gronStream(in, out, optMonochrome, statementToString)
 
 		if code != exitOK {
 			t.Errorf("want exitOK; have %d", code)
@@ -109,7 +111,7 @@ func TestLargeGronStream(t *testing.T) {
 		}
 
 		out := &bytes.Buffer{}
-		code, err := gronStream(in, out, optMonochrome)
+		code, err := gronStream(in, out, optMonochrome, statementToString)
 
 		if code != exitOK {
 			t.Errorf("want exitOK; have %d", code)
@@ -158,7 +160,7 @@ func TestUngron(t *testing.T) {
 		}
 
 		out := &bytes.Buffer{}
-		code, err := ungron(in, out, optMonochrome)
+		code, err := ungron(in, out, optMonochrome, statementToString)
 
 		if code != exitOK {
 			t.Errorf("want exitOK; have %d", code)
@@ -205,7 +207,7 @@ func TestGronJ(t *testing.T) {
 		}
 
 		out := &bytes.Buffer{}
-		code, err := gron(in, out, optMonochrome|optJSON)
+		code, err := gron(in, out, optMonochrome|optJSON, statementToString)
 
 		if code != exitOK {
 			t.Errorf("want exitOK; have %d", code)
@@ -244,7 +246,7 @@ func TestGronStreamJ(t *testing.T) {
 		}
 
 		out := &bytes.Buffer{}
-		code, err := gronStream(in, out, optMonochrome|optJSON)
+		code, err := gronStream(in, out, optMonochrome|optJSON, statementToString)
 
 		if code != exitOK {
 			t.Errorf("want exitOK; have %d", code)
@@ -291,7 +293,7 @@ func TestUngronJ(t *testing.T) {
 		}
 
 		out := &bytes.Buffer{}
-		code, err := ungron(in, out, optMonochrome|optJSON)
+		code, err := ungron(in, out, optMonochrome|optJSON, statementToString)
 
 		if code != exitOK {
 			t.Errorf("want exitOK; have %d", code)
@@ -328,9 +330,59 @@ func BenchmarkBigJSON(b *testing.B) {
 			b.Fatalf("failed to rewind input: %s", err)
 		}
 
-		_, err := gron(in, out, optMonochrome|optNoSort)
+		_, err := gron(in, out, optMonochrome|optNoSort, statementToString)
 		if err != nil {
 			b.Fatalf("failed to gron: %s", err)
 		}
 	}
+}
+
+func TestGronLowMem(t *testing.T) {
+	cases := []struct {
+		inFile  string
+		outFile string
+	}{
+		{"testdata/one.json", "testdata/one.gron"},
+		{"testdata/two.json", "testdata/two.gron"},
+		{"testdata/three.json", "testdata/three.gron"},
+		{"testdata/github.json", "testdata/github.gron"},
+	}
+
+	for _, c := range cases {
+		in, err := os.Open(c.inFile)
+		if err != nil {
+			t.Fatalf("failed to open input file: %s", err)
+		}
+
+		want, err := ioutil.ReadFile(c.outFile)
+		if err != nil {
+			t.Fatalf("failed to open want file: %s", err)
+		}
+
+		out := &bytes.Buffer{}
+		code, err := gronLowMem(in, out, optMonochrome, statementToString)
+
+		if code != exitOK {
+			t.Errorf("want exitOK; have %d", code)
+		}
+		if err != nil {
+			t.Errorf("want nil error; have %s", err)
+		}
+
+		// Because `gronLowMem` doesn't accumulate all the statements, we can't
+		// sort them before printing and thus we have to do that here after
+		// splitting on lines.
+		wanted := strings.Split(string(want), "\n")
+		sort.Strings(wanted)
+
+		outed := strings.Split(string(out.Bytes()), "\n")
+		sort.Strings(outed)
+
+		if !reflect.DeepEqual(wanted, outed) {
+			t.Logf("want: %s", want)
+			t.Logf("have: %s", out.Bytes())
+			t.Errorf("gronned %s does not match %s", c.inFile, c.outFile)
+		}
+	}
+
 }
