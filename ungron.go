@@ -13,8 +13,12 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"unicode"
@@ -512,4 +516,134 @@ func recursiveSliceMerge(a, b []interface{}) ([]interface{}, error) {
 		}
 	}
 	return out, nil
+}
+
+// Aliasing `interface{}` makes life a little easier and more
+// readable since we're creating and referencing them *a lot*.
+type Entry = interface{}
+
+// Have to use pointers because we're modifying them after creation
+// and we need them to stick around.
+type JSONobject = map[string]*Entry
+type JSONlist = []*Entry
+
+// We want to buffer `stdout`.
+var OUT *bufio.Writer
+
+func ungronLowMem(r io.Reader, w io.Writer, opts int, conv statementconv) (int, error) {
+	// Since we're buffering, we have to make sure we flush at the end.
+	OUT = bufio.NewWriterSize(os.Stdout, 1048576)
+	defer OUT.Flush()
+
+	// Our root is currently undefined re: list or object.
+	var root Entry
+
+	// Counters for how often / when we force a GC.
+	var line int
+	var loops int
+
+	// We could start up a `json.NewDecoder(os.Stdin)` and loop
+	// over `d.More()` but that inexplicably uses more memory
+	// than creating a new `json.Marshal` for each line.
+	scanner := bufio.NewScanner(os.Stdin)
+
+	for scanner.Scan() {
+		var x []Entry
+
+		err := json.Unmarshal(scanner.Bytes(), &x)
+		if err != nil {
+			return 5, err
+		}
+
+		// Start at the very beginning...
+		p := &root
+
+		a := x[0].([]Entry)
+
+		for curidx, k := range a {
+			loops++
+			switch k.(type) {
+
+			case float64:
+				// We know it's an int because it's a list index.
+				iv := int(k.(float64))
+
+				if *p == nil {
+					var tmp Entry
+					*p = []Entry{tmp}
+				}
+
+				// We need this a few times in the next bit
+				lenP := len((*p).([]Entry))
+
+				if lenP <= iv {
+					skipFill := false
+					if lenP == iv+1 {
+						skipFill = true
+					} else if lenP == iv {
+						tmp := make([]Entry, 0)
+						*p = append((*p).([]Entry), tmp)
+						skipFill = true
+					} else if lenP < iv+1 {
+						for z := lenP; z < iv+1; z++ {
+							*p = append((*p).([]Entry), nil)
+						}
+						skipFill = true
+					}
+					if !skipFill {
+						for i := range (*p).([]Entry) {
+							if (*p).([]Entry)[i] == nil {
+								tmp := make([]Entry, 0)
+								(*p).([]Entry)[i] = tmp
+							}
+						}
+					}
+				}
+				if curidx < len(a)-1 {
+					if (*p).([]Entry)[iv] == nil {
+						tmp := make([]Entry, 0)
+						(*p).([]Entry)[iv] = tmp
+					}
+				}
+				p = &((*p).([]Entry)[iv])
+
+			case string:
+				sv := k.(string)
+				if p == nil {
+					*p = make(JSONobject)
+				} else if _, ok := (*p).(JSONobject)[sv]; !ok {
+					(*p).(JSONobject)[sv] = new(Entry)
+				}
+				p = (*p).(JSONobject)[sv]
+			}
+		}
+
+		// We can just stuff the entry into the relevant slot.
+		*p = x[1]
+
+		line++
+
+		// Attempting to control the memory...
+		if gcLoopsEvery > 0 && loops > gcLoopsEvery {
+			runtime.GC()
+			loops = 0
+		}
+
+		// Attempting to control the memory...
+		if gcLinesEvery > 0 && (line-gcLinesEvery)%gcLinesEvery == 0 {
+			runtime.GC()
+		}
+	}
+
+	// Piggyback on the stdlib to output our resultant JSON blob.
+	// Originally was a recursive routine when we didn't have a bare
+	// `interface{}` construct but that fell off a cliff CPU/RAM-wise.
+	b, err := json.Marshal(&root)
+	if err != nil {
+		return 0, err
+	}
+	OUT.Write(b)
+	OUT.WriteString("\n")
+
+	return 0, nil
 }
