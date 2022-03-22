@@ -183,8 +183,11 @@ func main() {
 	// Pick the appropriate action: gron, ungron or gronStream
 	var a actionFn = gron
 	if ungronFlag {
+		// Low memory variant for streaming JSON ungronning.
 		if memoryFlag {
+			jsonFlag = true
 			streamFlag = true
+			opts = opts | optJSON | optStream
 			a = ungronLowMem
 		} else {
 			a = ungron
