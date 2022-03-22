@@ -610,7 +610,7 @@ func ungronLowMem(r io.Reader, w io.Writer, opts int, conv statementconv) (int, 
 			case string:
 				sv := k.(string)
 				if p == nil {
-					*p = make(JSONobject)
+					*p = new(JSONobject)
 				} else if _, ok := (*p).(JSONobject)[sv]; !ok {
 					(*p).(JSONobject)[sv] = new(Entry)
 				}
@@ -619,7 +619,14 @@ func ungronLowMem(r io.Reader, w io.Writer, opts int, conv statementconv) (int, 
 		}
 
 		// We can just stuff the entry into the relevant slot.
-		*p = x[1]
+		switch x[1].(type) {
+		case []interface{}:
+			*p = []interface{}{}
+		case map[string]interface{}:
+			*p = make(JSONobject)
+		default:
+			*p = x[1]
+		}
 
 		line++
 
