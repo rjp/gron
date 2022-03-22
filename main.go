@@ -45,6 +45,9 @@ var (
 	boolColor  = color.New(color.FgCyan)
 )
 
+var gcLinesEvery = 0
+var gcLoopsEvery = 0
+
 // gronVersion stores the current gron version, set at build
 // time with the ldflags -X option
 var gronVersion = "dev"
@@ -115,6 +118,8 @@ func main() {
 	flag.BoolVar(&jsonFlag, "json", false, "")
 	flag.BoolVar(&memoryFlag, "e", false, "")
 	flag.BoolVar(&memoryFlag, "efficient", false, "")
+	flag.IntVar(&gcLinesEvery, "gclines", 0, "")
+	flag.IntVar(&gcLoopsEvery, "gcloops", 0, "")
 
 	flag.Parse()
 
@@ -178,7 +183,12 @@ func main() {
 	// Pick the appropriate action: gron, ungron or gronStream
 	var a actionFn = gron
 	if ungronFlag {
-		a = ungron
+		if memoryFlag {
+			streamFlag = true
+			a = ungronLowMem
+		} else {
+			a = ungron
+		}
 	} else if memoryFlag {
 		a = gronLowMem
 	} else if streamFlag {
