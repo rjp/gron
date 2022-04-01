@@ -580,8 +580,8 @@ func ungronLowMem(r io.Reader, w io.Writer, opts int, conv statementconv) (int, 
 					if lenP == iv+1 {
 						skipFill = true
 					} else if lenP == iv {
-						tmp := make([]Entry, 0)
-						*p = append((*p).([]Entry), tmp)
+						//						tmp := make([]Entry, 0)
+						*p = append((*p).([]Entry), nil)
 						skipFill = true
 					} else if lenP < iv+1 {
 						for z := lenP; z < iv+1; z++ {
