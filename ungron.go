@@ -17,7 +17,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"runtime"
 	"strconv"
 	"strings"
@@ -532,7 +531,7 @@ var OUT *bufio.Writer
 
 func ungronLowMem(r io.Reader, w io.Writer, opts int, conv statementconv) (int, error) {
 	// Since we're buffering, we have to make sure we flush at the end.
-	OUT = bufio.NewWriterSize(os.Stdout, 1048576)
+	OUT = bufio.NewWriterSize(w, 1048576)
 	defer OUT.Flush()
 
 	// Our root is currently undefined re: list or object.
@@ -545,7 +544,7 @@ func ungronLowMem(r io.Reader, w io.Writer, opts int, conv statementconv) (int, 
 	// We could start up a `json.NewDecoder(os.Stdin)` and loop
 	// over `d.More()` but that inexplicably uses more memory
 	// than creating a new `json.Marshal` for each line.
-	scanner := bufio.NewScanner(os.Stdin)
+	scanner := bufio.NewScanner(r)
 
 	for scanner.Scan() {
 		var x []Entry
