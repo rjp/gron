@@ -611,6 +611,10 @@ func ungronLowMem(r io.Reader, w io.Writer, opts int, conv statementconv) (int, 
 				if p == nil {
 					*p = new(JSONobject)
 				} else if _, ok := (*p).(JSONobject)[sv]; !ok {
+				if *p == nil {
+					*p = make(map[string]*interface{}) // new(JSONobject)
+				}
+				if _, ok := (*p).(JSONobject)[sv]; !ok {
 					(*p).(JSONobject)[sv] = new(Entry)
 				}
 				p = (*p).(JSONobject)[sv]
