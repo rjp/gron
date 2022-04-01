@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -289,4 +293,59 @@ func TestMerge(t *testing.T) {
 		t.Errorf("Have and want datastructures are unequal")
 	}
 
+}
+
+func TestUngronLowMemSimple(t *testing.T) {
+	cases := []struct {
+		in   string
+		json string
+		name string
+	}{
+		{
+			`[["contact","e-mail",0], "mail@tomnomnom.com"]`,
+			`{"contact":{"e-mail":["mail@tomnomnom.com"]}}`,
+			"simple obj-obj-list",
+		},
+		{
+			`[[0],1]`,
+			`[1]`,
+			"single index",
+		},
+		{
+			`[[4],1]`,
+			`[null,null,null,null,1]`,
+			"single non-zero index",
+		},
+		{
+			`[[1,2,3,4],1]`,
+			`[null,[null,null,[null,null,null,[null,null,null,null,1]]]]`,
+			"multiple non-zero index",
+		},
+		{
+			`[[1,"2",3,"4"],1]`,
+			`[null,{"2":[null,null,null,{"4":1}]}]`,
+			"mixed non-zero index",
+		},
+	}
+
+	for _, i := range cases {
+		t.Run(i.name, func(t *testing.T) {
+			var outBuffer []byte
+			outWriter := bytes.NewBuffer(outBuffer)
+
+			inReader := strings.NewReader(i.in)
+
+			_, err := ungronLowMem(inReader, outWriter, 0, nil)
+			if err != nil {
+				t.Fatalf("failed to ungron-lowmem statement: %s", err)
+			}
+
+			// `ungronLowMem` tacks on a newline, account for that here.
+			if !(i.json+"\n" == outWriter.String()) {
+				t.Errorf("in and out are unequal: %s", i.name)
+				fmt.Fprintf(os.Stderr, "have: %s\nwant: %s\ngot : %s\n", i.in, i.json, outWriter.String())
+
+			}
+		})
+	}
 }
